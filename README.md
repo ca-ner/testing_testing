@@ -1,7 +1,7 @@
 # 2026 Otel Fırsatları — Forum Scraper + Qwen Analizi + Görselleştirme
 
 Donanimhaber **"2026 F/P Otel Fırsatları"** konusundaki yorumları toplayan,
-lokal **LM Studio / Qwen** modeliyle analiz eden ve sonuçları arama yapılabilen
+lokal **Ollama / Qwen** modeliyle analiz eden ve sonuçları arama yapılabilen
 bir HTML sayfasında gösteren üç parçalı bir araç.
 
 Konu: https://forum.donanimhaber.com/2026-f-p-otel-firsatlari--161803716 (571 sayfa)
@@ -38,14 +38,20 @@ incelenmez, mükerrer olmaz).
 > Çıktı `desifre.json` (ASCII güvenli ad; istenen "deşifre.json" ile aynı içerik).
 > Her kayıt: `id`, `message_id`, `page`, `username`, `date`, `message`.
 
-## 2) LM Studio + Qwen ile analiz → `yorum.json`
+## 2) Ollama + Qwen ile analiz → `yorum.json`
 
-Önce **LM Studio**'da Local Server'ı başlatın (varsayılan `http://localhost:1234`)
-ve bir Qwen modeli yükleyin. Sonra:
+Önce **Ollama**'yı kurun, modeli indirin ve (gerekirse) sunucuyu başlatın:
+
+```bash
+ollama pull qwen2.5:14b
+ollama serve            # genelde arka planda zaten çalışır
+```
+
+Sonra analizi çalıştırın (varsayılan adres `http://localhost:11434`):
 
 ```bash
 python analyze_messages.py --limit 5          # birkaç mesajla test
-python analyze_messages.py --model qwen2.5-7b-instruct
+python analyze_messages.py --model qwen2.5:14b
 ```
 
 Her mesaj için çıkarılan bilgiler `yorum.json`'a yazılır:
@@ -57,7 +63,7 @@ analiz edilmiş mesajlar (`id` ile) atlanır. Modele ulaşılamazsa o mesaj
 **kaydedilmez**, böylece bir sonraki çalıştırmada otomatik olarak yeniden
 denenir.
 
-> LM Studio bu makinede lokal çalıştığı için analizi kendi bilgisayarınızda
+> Ollama bu makinede lokal çalıştığı için analizi kendi bilgisayarınızda
 > çalıştırmanız gerekir. Depodaki `yorum.json` şu an HTML'i önizlemeniz için
 > birkaç **örnek** kayıt içerir; `analyze_messages.py`'yi çalıştırınca gerçek
 > verilerle değişir.

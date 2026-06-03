@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-2) desifre.json içindeki her mesajı, LM Studio üzerinde lokal çalışan Qwen
-   diline modeline gönderir ve şu bilgileri çıkarır:
+2) desifre.json içindeki her mesajı, lokal Ollama üzerinde çalışan Qwen
+   modeline (varsayılan: qwen2.5:14b) gönderir ve şu bilgileri çıkarır:
        1) bahsedilen otel(ler)
        2) (varsa) fiyat
        3) yorumun kısa özeti
    Sonuçları yorum.json dosyasına yazar.
 
 Ön koşul:
-    - LM Studio açık olmalı ve "Local Server" başlatılmış olmalı
-      (varsayılan adres: http://localhost:1234).
-    - Bir Qwen modeli (ör. qwen2.5-7b-instruct) yüklü olmalı.
-      LM Studio OpenAI uyumlu bir API sunar.
+    - Ollama kurulu ve çalışıyor olmalı (varsayılan adres: http://localhost:11434).
+    - Model indirilmiş olmalı:  ollama pull qwen2.5:14b
+    - Sunucuyu başlatmak için (gerekirse):  ollama serve
 
 Kullanım:
     python analyze_messages.py
     python analyze_messages.py --limit 5            # ilk 5 mesajla test
-    python analyze_messages.py --model qwen2.5-7b-instruct
-    python analyze_messages.py --base-url http://localhost:1234/v1
+    python analyze_messages.py --model qwen2.5:14b
+    python analyze_messages.py --base-url http://localhost:11434
 """
 
 import argparse
@@ -47,26 +46,27 @@ USER_TEMPLATE = "Forum mesajı:\n\"\"\"\n{message}\n\"\"\""
 
 
 def call_llm(base_url: str, model: str, message: str,
-             temperature: float = 0.1, timeout: int = 120) -> dict:
-    """LM Studio (OpenAI uyumlu) chat/completions ucuna istek atar."""
-    url = base_url.rstrip("/") + "/chat/completions"
+             temperature: float = 0.1, timeout: int = 180) -> dict:
+    """Lokal Ollama'nın /api/chat ucuna istek atar (JSON modu açık)."""
+    url = base_url.rstrip("/") + "/api/chat"
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_TEMPLATE.format(message=message)},
         ],
-        "temperature": temperature,
-        "max_tokens": 400,
-        # LM Studio yeni sürümleri JSON modunu destekler; desteklemezse
-        # sunucu bunu yok sayar.
-        "response_format": {"type": "json_object"},
         "stream": False,
+        # Ollama'nın yapısal çıktı modu: yanıtı geçerli JSON'a zorlar.
+        "format": "json",
+        "options": {
+            "temperature": temperature,
+            "num_predict": 400,
+        },
     }
     resp = requests.post(url, json=payload, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()
-    content = data["choices"][0]["message"]["content"]
+    content = data["message"]["content"]
     return parse_json_block(content)
 
 
@@ -100,13 +100,13 @@ def norm(v):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="LM Studio Qwen ile mesaj analizi")
+    ap = argparse.ArgumentParser(description="Ollama Qwen ile mesaj analizi")
     ap.add_argument("--in", dest="infile", default="desifre.json")
     ap.add_argument("--out", default="yorum.json")
-    ap.add_argument("--base-url", default="http://localhost:1234/v1",
-                    help="LM Studio OpenAI uyumlu API adresi")
-    ap.add_argument("--model", default="qwen2.5-7b-instruct",
-                    help="LM Studio'da yüklü model adı/kimliği")
+    ap.add_argument("--base-url", default="http://localhost:11434",
+                    help="Ollama API adresi")
+    ap.add_argument("--model", default="qwen2.5:14b",
+                    help="Ollama'da yüklü model adı (ör. qwen2.5:14b)")
     ap.add_argument("--limit", type=int, default=None,
                     help="sadece ilk N mesajı işle (test için)")
     ap.add_argument("--temperature", type=float, default=0.1)
