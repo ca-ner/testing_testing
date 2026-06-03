@@ -152,6 +152,7 @@ def main():
           f"Model: {args.model} @ {args.base_url}")
 
     errors = 0
+    skipped_no_hotel = 0
     for i, m in enumerate(todo, 1):
         text = m.get("message", "")
         try:
@@ -165,13 +166,20 @@ def main():
                   f"denenecek): {e}", file=sys.stderr)
             continue
 
+        otel = norm(analysis.get("otel"))
+        if otel is None:
+            # Otel adı geçmiyor / tanınmadı: bu kayıt hiç oluşturulmaz.
+            skipped_no_hotel += 1
+            print(f"  [{i}/{len(todo)}] id={m.get('id')} otel yok -> atlandı")
+            continue
+
         results.append({
             "id": m.get("id"),
             "message_id": m.get("message_id"),
             "username": m.get("username"),
             "date": m.get("date"),
             "page": m.get("page"),
-            "otel": norm(analysis.get("otel")),
+            "otel": otel,
             "fiyat": norm(analysis.get("fiyat")),
             "ozet": norm(analysis.get("ozet")),
             "mesaj": text,
@@ -187,7 +195,10 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    msg = f"\nBitti. Toplam {len(results)} analiz '{args.out}' dosyasında."
+    msg = (f"\nBitti. Otel adı geçen {len(results)} kayıt '{args.out}' "
+           f"dosyasında.")
+    if skipped_no_hotel:
+        msg += f" {skipped_no_hotel} mesaj otel içermediği için yazılmadı."
     if errors:
         msg += (f" {errors} mesaj hata aldı, kaydedilmedi; scripti tekrar "
                 f"çalıştırınca otomatik denenecek.")
