@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Otel Yorumları — 2026 Otel Fırsatları</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg-soft: #1e293b;
+    --card: #1e293b;
+    --card-hover: #273449;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-2: #34d399;
+    --price: #fbbf24;
+    --shadow: 0 4px 20px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #13314f 0%, var(--bg) 55%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(10px);
+    background: rgba(15,23,42,.85);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+  }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.5rem; margin: 0; letter-spacing: .3px; }
+  h1 .spark { color: var(--accent); }
+  .count { color: var(--muted); font-size: .9rem; }
+  .controls { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .search-wrap { position: relative; flex: 1; min-width: 240px; }
+  .search-wrap svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  #search {
+    width: 100%; padding: 12px 14px 12px 42px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text); font-size: 1rem; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,.15); }
+  select {
+    padding: 12px 14px; background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text); font-size: .95rem; cursor: pointer;
+  }
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 18px; box-shadow: var(--shadow);
+    transition: transform .15s ease, background .15s, border-color .15s;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .card:hover { transform: translateY(-3px); background: var(--card-hover); border-color: #475569; }
+  .hotel {
+    font-size: 1.15rem; font-weight: 700; color: var(--accent);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .hotel.empty { color: var(--muted); font-weight: 600; font-style: italic; }
+  .summary { color: var(--text); line-height: 1.5; font-size: .96rem; }
+  .summary .label, .price .label { color: var(--muted); font-weight: 600; }
+  .price {
+    font-size: 1rem; font-weight: 700; color: var(--price);
+    background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.25);
+    padding: 8px 12px; border-radius: 10px; align-self: flex-start;
+  }
+  .meta { margin-top: 4px; display: flex; justify-content: space-between;
+          color: var(--muted); font-size: .8rem; border-top: 1px solid var(--border); padding-top: 10px; }
+  .meta .user { color: var(--accent-2); font-weight: 600; }
+  details.raw { font-size: .85rem; color: var(--muted); }
+  details.raw summary { cursor: pointer; color: var(--accent); }
+  details.raw .full { margin-top: 8px; white-space: pre-wrap; line-height: 1.5; color: var(--text); }
+  mark { background: var(--accent); color: #06283d; border-radius: 3px; padding: 0 2px; }
+  .empty-state, .loader {
+    text-align: center; color: var(--muted); padding: 60px 20px; font-size: 1.05rem;
+  }
+  .filebar { margin-top: 12px; font-size: .85rem; color: var(--muted); }
+  .filebar input[type=file] { color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title-row">
+    <h1><span class="spark">★</span> Otel Yorumları</h1>
+    <span class="count" id="count">yükleniyor…</span>
+  </div>
+  <div class="controls">
+    <div class="search-wrap">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search" type="text" placeholder="Otel, fiyat, yorum ya da kullanıcı ara…" autocomplete="off">
+    </div>
+    <select id="sort">
+      <option value="default">Sıralama: Varsayılan</option>
+      <option value="hotel">Otele göre (A-Z)</option>
+      <option value="priced">Önce fiyatı olanlar</option>
+    </select>
+    <select id="filter">
+      <option value="all">Tümü</option>
+      <option value="hotel">Sadece otel adı geçenler</option>
+      <option value="price">Sadece fiyat geçenler</option>
+    </select>
+  </div>
+  <div class="filebar" id="filebar">
+    <span>yorum.json otomatik yüklenemedi (dosya doğrudan açıldıysa normaldir). Elle seç:</span>
+    <input type="file" id="fileInput" accept="application/json,.json">
+  </div>
+</header>
+
+<main>
+  <div id="grid" class="grid"></div>
+  <div id="status" class="loader">yorum.json yükleniyor…</div>
+</main>
+
+<script>
+let DATA = [];
+
+function escapeHtml(s) {
+  return (s == null ? "" : String(s))
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function highlight(text, q) {
+  const safe = escapeHtml(text);
+  if (!q) return safe;
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safe.replace(new RegExp("(" + esc + ")", "gi"), "<mark>$1</mark>");
+}
+
+function cardHtml(item, q) {
+  const otel = item.otel;
+  const hotelClass = otel ? "hotel" : "hotel empty";
+  const hotelText = otel ? highlight(otel, q) : "Otel belirtilmemiş";
+  const priceBlock = item.fiyat
+    ? `<div class="price"><span class="label">Fiyat:</span> ${highlight(item.fiyat, q)}</div>`
+    : "";
+  const ozet = item.ozet || "(özet yok)";
+  const full = item.mesaj || "";
+  return `
+    <article class="card">
+      <div class="${hotelClass}">🏨 ${hotelText}</div>
+      <div class="summary"><span class="label">Yorum:</span> ${highlight(ozet, q)}</div>
+      ${priceBlock}
+      <details class="raw">
+        <summary>Orijinal mesaj</summary>
+        <div class="full">${highlight(full, q)}</div>
+      </details>
+      <div class="meta">
+        <span class="user">@${escapeHtml(item.username || "?")}</span>
+        <span>${escapeHtml(item.date || "")}${item.page ? " · sf." + item.page : ""}</span>
+      </div>
+    </article>`;
+}
+
+function applyView() {
+  const q = document.getElementById("search").value.trim();
+  const ql = q.toLowerCase();
+  const filter = document.getElementById("filter").value;
+  const sort = document.getElementById("sort").value;
+
+  let rows = DATA.filter(it => {
+    if (filter === "hotel" && !it.otel) return false;
+    if (filter === "price" && !it.fiyat) return false;
+    if (!ql) return true;
+    const hay = [it.otel, it.fiyat, it.ozet, it.mesaj, it.username]
+      .map(x => (x || "").toLowerCase()).join("  ");
+    return hay.includes(ql);
+  });
+
+  if (sort === "hotel") {
+    rows = [...rows].sort((a, b) => (a.otel || "￿").localeCompare(b.otel || "￿", "tr"));
+  } else if (sort === "priced") {
+    rows = [...rows].sort((a, b) => (b.fiyat ? 1 : 0) - (a.fiyat ? 1 : 0));
+  }
+
+  const grid = document.getElementById("grid");
+  const status = document.getElementById("status");
+  document.getElementById("count").textContent =
+    `${rows.length} / ${DATA.length} yorum`;
+
+  if (!rows.length) {
+    grid.innerHTML = "";
+    status.className = "empty-state";
+    status.textContent = q ? `"${q}" için sonuç bulunamadı.` : "Gösterilecek yorum yok.";
+    return;
+  }
+  status.textContent = "";
+  status.className = "hidden";
+  grid.innerHTML = rows.map(it => cardHtml(it, q)).join("");
+}
+
+function loadData(arr) {
+  DATA = Array.isArray(arr) ? arr : [];
+  document.getElementById("filebar").classList.add("hidden");
+  applyView();
+}
+
+function init() {
+  ["search", "sort", "filter"].forEach(id =>
+    document.getElementById(id).addEventListener("input", applyView));
+  document.getElementById("fileInput").addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { try { loadData(JSON.parse(r.result)); } catch (err) { alert("JSON okunamadı: " + err); } };
+    r.readAsText(f, "utf-8");
+  });
+
+  // Aynı klasördeki yorum.json'u otomatik çekmeyi dene (bir HTTP sunucu üzerinden açıldığında çalışır)
+  fetch("yorum.json", { cache: "no-store" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(loadData)
+    .catch(() => {
+      // file:// ile açıldıysa fetch engellenir; dosya seçici görünür kalır
+      document.getElementById("status").className = "empty-state";
+      document.getElementById("status").textContent =
+        "yorum.json otomatik yüklenemedi. Yukarıdan dosyayı elle seçebilir " +
+        "ya da bu klasörde 'python -m http.server' çalıştırıp adresi tarayıcıda açabilirsiniz.";
+    });
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
