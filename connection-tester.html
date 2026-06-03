@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connection &amp; Geolocation Tester</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --card-soft: #273449;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --good: #34d399;
+      --bad: #f87171;
+      --warn: #fbbf24;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 80% -10%, #1e3a5f 0%, transparent 60%),
+                  radial-gradient(900px 700px at -10% 110%, #312e81 0%, transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .wrap {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.9rem;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: var(--muted);
+      box-shadow: 0 0 0 0 rgba(56,189,248,0.6);
+    }
+
+    .dot.online {
+      background: var(--good);
+      animation: pulse 2s infinite;
+    }
+
+    .dot.offline { background: var(--bad); }
+    .dot.checking { background: var(--warn); }
+
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+      70%  { box-shadow: 0 0 0 12px rgba(52,211,153,0); }
+      100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+    }
+
+    .status-text { font-size: 1.15rem; font-weight: 600; }
+    .status-sub { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .metric {
+      background: var(--card-soft);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric .value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px 18px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .field .k { color: var(--muted); font-size: 0.78rem; }
+    .field .v { font-size: 1.05rem; font-weight: 600; margin-top: 2px; word-break: break-word; }
+
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin: 0 0 16px;
+    }
+
+    .map-link {
+      display: inline-block;
+      margin-top: 16px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .map-link:hover { text-decoration: underline; }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      background: var(--accent);
+      color: #06283b;
+      transition: transform 0.08s ease, opacity 0.2s ease;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .error {
+      color: var(--bad);
+      font-size: 0.9rem;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .skeleton { color: var(--muted); }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 8px;
+    }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🌐 Connection &amp; Geolocation Tester</h1>
+      <p>Check your internet status, public IP address, and approximate location.</p>
+    </header>
+
+    <!-- Connection status -->
+    <section class="card">
+      <div class="status-row">
+        <span id="dot" class="dot checking"></span>
+        <div>
+          <div id="statusText" class="status-text">Checking connection…</div>
+          <div id="statusSub" class="status-sub">Running a quick reachability test</div>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">Latency (ping)</div>
+          <div id="latency" class="value skeleton">—</div>
+        </div>
+        <div class="metric">
+          <div class="label">Connection type</div>
+          <div id="connType" class="value skeleton">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IP & geolocation -->
+    <section class="card">
+      <h2>IP &amp; Location</h2>
+      <div class="grid">
+        <div class="field"><span class="k">Public IP</span><span id="ip" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">City</span><span id="city" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">Region</span><span id="region" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">Country</span><span id="country" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">Postal code</span><span id="postal" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">Timezone</span><span id="timezone" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">Coordinates</span><span id="coords" class="v skeleton">Loading…</span></div>
+        <div class="field"><span class="k">ISP / Org</span><span id="org" class="v skeleton">Loading…</span></div>
+      </div>
+      <a id="mapLink" class="map-link" href="#" target="_blank" rel="noopener" style="display:none;">📍 View on map →</a>
+      <div id="geoError" class="error"></div>
+    </section>
+
+    <div class="controls">
+      <button id="refreshBtn">🔄 Run test again</button>
+      <button id="preciseBtn" class="ghost">🎯 Use precise GPS location</button>
+    </div>
+
+    <footer>
+      Geolocation is approximate and based on your IP via
+      <a href="https://ipapi.co" target="_blank" rel="noopener">ipapi.co</a>.
+    </footer>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function setText(id, value) {
+      const el = $(id);
+      el.textContent = (value === undefined || value === null || value === "") ? "—" : value;
+      el.classList.remove("skeleton");
+    }
+
+    // --- Connection status -------------------------------------------------
+    function describeConnection() {
+      const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (!c) return "Unknown";
+      const parts = [];
+      if (c.effectiveType) parts.push(c.effectiveType.toUpperCase());
+      if (c.downlink) parts.push(c.downlink + " Mbps");
+      return parts.length ? parts.join(" · ") : "Unknown";
+    }
+
+    async function checkConnection() {
+      const dot = $("dot");
+      dot.className = "dot checking";
+      $("statusText").textContent = "Checking connection…";
+      $("statusSub").textContent = "Running a quick reachability test";
+      $("latency").textContent = "—";
+
+      if (!navigator.onLine) {
+        dot.className = "dot offline";
+        $("statusText").textContent = "Offline";
+        $("statusSub").textContent = "Your device reports no network connection";
+        $("latency").textContent = "n/a";
+        setText("connType", describeConnection());
+        return false;
+      }
+
+      // Measure latency with a tiny no-cache request to a fast endpoint.
+      const start = performance.now();
+      try {
+        await fetch("https://www.gstatic.com/generate_204?_=" + Date.now(), {
+          mode: "no-cors",
+          cache: "no-store",
+        });
+        const ms = Math.round(performance.now() - start);
+        dot.className = "dot online";
+        $("statusText").textContent = "Online";
+        $("statusSub").textContent = "Internet connection is working";
+        $("latency").textContent = ms + " ms";
+      } catch (e) {
+        dot.className = "dot offline";
+        $("statusText").textContent = "No internet access";
+        $("statusSub").textContent = "Device is connected to a network but can't reach the internet";
+        $("latency").textContent = "timeout";
+      }
+      setText("connType", describeConnection());
+      return navigator.onLine;
+    }
+
+    // --- IP & geolocation --------------------------------------------------
+    async function loadGeo() {
+      const ids = ["ip","city","region","country","postal","timezone","coords","org"];
+      ids.forEach((id) => { $(id).textContent = "Loading…"; $(id).classList.add("skeleton"); });
+      $("geoError").style.display = "none";
+      $("mapLink").style.display = "none";
+
+      try {
+        const res = await fetch("https://ipapi.co/json/");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const d = await res.json();
+        if (d.error) throw new Error(d.reason || "Lookup failed");
+
+        setText("ip", d.ip);
+        setText("city", d.city);
+        setText("region", d.region);
+        setText("country", [d.country_name, d.country_code].filter(Boolean).join(" (").concat(d.country_code ? ")" : ""));
+        setText("postal", d.postal);
+        setText("timezone", d.timezone + (d.utc_offset ? " (UTC " + d.utc_offset + ")" : ""));
+        setText("org", d.org || d.asn);
+
+        if (d.latitude != null && d.longitude != null) {
+          setText("coords", d.latitude.toFixed(4) + ", " + d.longitude.toFixed(4));
+          const link = $("mapLink");
+          link.href = "https://www.openstreetmap.org/?mlat=" + d.latitude + "&mlon=" + d.longitude + "#map=12/" + d.latitude + "/" + d.longitude;
+          link.style.display = "inline-block";
+        } else {
+          setText("coords", "—");
+        }
+      } catch (err) {
+        ids.forEach((id) => setText(id, "—"));
+        const e = $("geoError");
+        e.textContent = "Could not load IP / location info: " + err.message +
+          ". This often happens when offline, or if a lookup limit / ad-blocker blocks the request.";
+        e.style.display = "block";
+      }
+    }
+
+    // --- Precise GPS (opt-in) ---------------------------------------------
+    function usePreciseLocation() {
+      if (!navigator.geolocation) {
+        alert("Your browser does not support GPS geolocation.");
+        return;
+      }
+      $("preciseBtn").disabled = true;
+      $("preciseBtn").textContent = "Requesting GPS…";
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          setText("coords", latitude.toFixed(5) + ", " + longitude.toFixed(5) + "  (±" + Math.round(accuracy) + "m)");
+          const link = $("mapLink");
+          link.href = "https://www.openstreetmap.org/?mlat=" + latitude + "&mlon=" + longitude + "#map=15/" + latitude + "/" + longitude;
+          link.style.display = "inline-block";
+          $("preciseBtn").textContent = "🎯 GPS location applied";
+          $("preciseBtn").disabled = false;
+        },
+        (err) => {
+          alert("Could not get GPS location: " + err.message);
+          $("preciseBtn").textContent = "🎯 Use precise GPS location";
+          $("preciseBtn").disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    // --- Wiring ------------------------------------------------------------
+    async function runAll() {
+      await Promise.all([checkConnection(), loadGeo()]);
+    }
+
+    $("refreshBtn").addEventListener("click", runAll);
+    $("preciseBtn").addEventListener("click", usePreciseLocation);
+    window.addEventListener("online", checkConnection);
+    window.addEventListener("offline", checkConnection);
+
+    runAll();
+  </script>
+</body>
+</html>
