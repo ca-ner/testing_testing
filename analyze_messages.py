@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+2) desifre.json içindeki her mesajı, LM Studio üzerinde lokal çalışan Qwen
+   diline modeline gönderir ve şu bilgileri çıkarır:
+       1) bahsedilen otel(ler)
+       2) (varsa) fiyat
+       3) yorumun kısa özeti
+   Sonuçları yorum.json dosyasına yazar.
+
+Ön koşul:
+    - LM Studio açık olmalı ve "Local Server" başlatılmış olmalı
+      (varsayılan adres: http://localhost:1234).
+    - Bir Qwen modeli (ör. qwen2.5-7b-instruct) yüklü olmalı.
+      LM Studio OpenAI uyumlu bir API sunar.
+
+Kullanım:
+    python analyze_messages.py
+    python analyze_messages.py --limit 5            # ilk 5 mesajla test
+    python analyze_messages.py --model qwen2.5-7b-instruct
+    python analyze_messages.py --base-url http://localhost:1234/v1
+"""
+
+import argparse
+import json
+import re
+import sys
+import time
+
+import requests
+
+SYSTEM_PROMPT = (
+    "Sen bir tatil forumu yorumlarını analiz eden bir asistansın. "
+    "Sana bir forum mesajı verilecek. Mesajdan SADECE şu bilgileri çıkar ve "
+    "yalnızca geçerli JSON döndür:\n"
+    '{\n'
+    '  "otel": "mesajda bahsedilen otel adı/adları, yoksa null",\n'
+    '  "fiyat": "mesajda geçen fiyat bilgisi (ör. \'gecelik 70 bin TL\'), yoksa null",\n'
+    '  "ozet": "yorumun tek cümlelik Türkçe özeti"\n'
+    '}\n'
+    "Kurallar: Sadece mesajda açıkça yazan bilgiyi kullan, uydurma. "
+    "Otel adı yoksa otel için null yaz. Fiyat yoksa fiyat için null yaz. "
+    "Çıktın yalnızca JSON olsun, başka açıklama ekleme."
+)
+
+USER_TEMPLATE = "Forum mesajı:\n\"\"\"\n{message}\n\"\"\""
+
+
+def call_llm(base_url: str, model: str, message: str,
+             temperature: float = 0.1, timeout: int = 120) -> dict:
+    """LM Studio (OpenAI uyumlu) chat/completions ucuna istek atar."""
+    url = base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": USER_TEMPLATE.format(message=message)},
+        ],
+        "temperature": temperature,
+        "max_tokens": 400,
+        # LM Studio yeni sürümleri JSON modunu destekler; desteklemezse
+        # sunucu bunu yok sayar.
+        "response_format": {"type": "json_object"},
+        "stream": False,
+    }
+    resp = requests.post(url, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    return parse_json_block(content)
+
+
+def parse_json_block(text: str) -> dict:
+    """Model çıktısından JSON nesnesini güvenli biçimde ayıklar."""
+    text = text.strip()
+    # ```json ... ``` bloklarını temizle
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # metin içindeki ilk { ... } bloğunu yakalamayı dene
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                pass
+    # ayrıştırılamazsa ham metni özete koy
+    return {"otel": None, "fiyat": None, "ozet": text[:300]}
+
+
+def norm(v):
+    """'null', 'yok', boş gibi değerleri None'a indirger."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if s.lower() in ("", "null", "none", "yok", "belirtilmemiş", "n/a"):
+        return None
+    return s
+
+
+def main():
+    ap = argparse.ArgumentParser(description="LM Studio Qwen ile mesaj analizi")
+    ap.add_argument("--in", dest="infile", default="desifre.json")
+    ap.add_argument("--out", default="yorum.json")
+    ap.add_argument("--base-url", default="http://localhost:1234/v1",
+                    help="LM Studio OpenAI uyumlu API adresi")
+    ap.add_argument("--model", default="qwen2.5-7b-instruct",
+                    help="LM Studio'da yüklü model adı/kimliği")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="sadece ilk N mesajı işle (test için)")
+    ap.add_argument("--temperature", type=float, default=0.1)
+    args = ap.parse_args()
+
+    try:
+        with open(args.infile, encoding="utf-8") as f:
+            messages = json.load(f)
+    except FileNotFoundError:
+        print(f"[HATA] '{args.infile}' bulunamadı. Önce scrape_forum.py çalıştırın.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    if args.limit:
+        messages = messages[: args.limit]
+
+    print(f"{len(messages)} mesaj analiz edilecek. Model: {args.model} "
+          f"@ {args.base_url}")
+
+    results = []
+    for i, m in enumerate(messages, 1):
+        text = m.get("message", "")
+        try:
+            analysis = call_llm(args.base_url, args.model, text,
+                                temperature=args.temperature)
+        except Exception as e:  # noqa: BLE001
+            print(f"  [HATA] mesaj {i} analiz edilemedi: {e}", file=sys.stderr)
+            analysis = {"otel": None, "fiyat": None, "ozet": None}
+
+        results.append({
+            "username": m.get("username"),
+            "date": m.get("date"),
+            "page": m.get("page"),
+            "otel": norm(analysis.get("otel")),
+            "fiyat": norm(analysis.get("fiyat")),
+            "ozet": norm(analysis.get("ozet")),
+            "mesaj": text,
+        })
+        print(f"  [{i}/{len(messages)}] otel={results[-1]['otel']!r} "
+              f"fiyat={results[-1]['fiyat']!r}")
+
+        # her 10 mesajda bir ara kayıt (uzun çalışmalarda veri kaybını önler)
+        if i % 10 == 0:
+            with open(args.out, "w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
+
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+    print(f"\nBitti. {len(results)} analiz '{args.out}' dosyasına yazıldı.")
+
+
+if __name__ == "__main__":
+    main()
