@@ -58,6 +58,11 @@ Her mesaj için çıkarılan bilgiler `yorum.json`'a yazılır:
 `id`, `message_id`, `otel` (bahsedilen otel), `fiyat` (varsa),
 `ozet` (yorum özeti) + kullanıcı/tarih.
 
+> **Sadece otel adı geçen yorumlar kaydedilir.** Mesajda otel adı yoksa ya da
+> model tanıyamadıysa (`otel` boş) o kayıt `yorum.json`'a hiç yazılmaz.
+> (Bu mesajlar dosyada tutulmadığı için, scripti yeniden çalıştırırsanız
+> tekrar modele sorulur.)
+
 **Bu script de devam edebilir:** var olan `yorum.json` okunur ve daha önce
 analiz edilmiş mesajlar (`id` ile) atlanır. Modele ulaşılamazsa o mesaj
 **kaydedilmez**, böylece bir sonraki çalıştırmada otomatik olarak yeniden

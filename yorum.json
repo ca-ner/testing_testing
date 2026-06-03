@@ -31,16 +31,5 @@
     "fiyat": null,
     "ozet": "Yemekler çok beğenildi, fiyat paylaşılmamış.",
     "mesaj": "(ÖRNEK VERİ) Maxx Royal Kemer'in yemekleri efsaneydi, a la carte restoranları özellikle çok iyi. Fiyatı paylaşmıyorum ama memnun kaldık."
-  },
-  {
-    "id": 4,
-    "message_id": "161803730",
-    "username": "gezgin_07",
-    "date": "28 Temmuz 2025 15:40:18",
-    "page": 1,
-    "otel": null,
-    "fiyat": null,
-    "ozet": "Genel bir teşekkür mesajı, otel veya fiyat bilgisi içermiyor.",
-    "mesaj": "(ÖRNEK VERİ) Eline sağlık güzel konu olmuş, takipteyim. Herkese iyi tatiller."
   }
 ]
