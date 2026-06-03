@@ -123,20 +123,51 @@ def main():
     if args.limit:
         messages = messages[: args.limit]
 
-    print(f"{len(messages)} mesaj analiz edilecek. Model: {args.model} "
-          f"@ {args.base_url}")
+    # Her mesaja kalıcı bir kimlik ver: scrape_forum.py 'id' atar; eski
+    # dosyalarda yoksa 'message_id' ya da içerikten türetilen bir anahtarı kullan.
+    def key_of(rec):
+        if rec.get("id") is not None:
+            return f"id:{rec['id']}"
+        if rec.get("message_id") is not None:
+            return f"mid:{rec['message_id']}"
+        return "h:" + str(hash(rec.get("message", "")))
 
+    # Yarım kalmış analizi sürdür: var olan yorum.json'daki işlenmiş kayıtları
+    # koru, aynı mesajı bir daha modele gönderme.
     results = []
-    for i, m in enumerate(messages, 1):
+    done = set()
+    try:
+        with open(args.out, encoding="utf-8") as f:
+            results = json.load(f)
+        done = {key_of(r) for r in results}
+        if done:
+            print(f"Mevcut '{args.out}' bulundu: {len(done)} kayıt zaten "
+                  f"analiz edilmiş, atlanacak.")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    todo = [m for m in messages if key_of(m) not in done]
+    print(f"{len(todo)} yeni mesaj analiz edilecek "
+          f"({len(messages) - len(todo)} atlandı). "
+          f"Model: {args.model} @ {args.base_url}")
+
+    errors = 0
+    for i, m in enumerate(todo, 1):
         text = m.get("message", "")
         try:
             analysis = call_llm(args.base_url, args.model, text,
                                 temperature=args.temperature)
         except Exception as e:  # noqa: BLE001
-            print(f"  [HATA] mesaj {i} analiz edilemedi: {e}", file=sys.stderr)
-            analysis = {"otel": None, "fiyat": None, "ozet": None}
+            # Başarısız analizi KAYDETME: 'done' sayılmasın ki sonraki
+            # çalıştırmada bu mesaj yeniden denensin.
+            errors += 1
+            print(f"  [HATA] id={m.get('id')} analiz edilemedi (tekrar "
+                  f"denenecek): {e}", file=sys.stderr)
+            continue
 
         results.append({
+            "id": m.get("id"),
+            "message_id": m.get("message_id"),
             "username": m.get("username"),
             "date": m.get("date"),
             "page": m.get("page"),
@@ -145,8 +176,8 @@ def main():
             "ozet": norm(analysis.get("ozet")),
             "mesaj": text,
         })
-        print(f"  [{i}/{len(messages)}] otel={results[-1]['otel']!r} "
-              f"fiyat={results[-1]['fiyat']!r}")
+        print(f"  [{i}/{len(todo)}] id={m.get('id')} "
+              f"otel={results[-1]['otel']!r} fiyat={results[-1]['fiyat']!r}")
 
         # her 10 mesajda bir ara kayıt (uzun çalışmalarda veri kaybını önler)
         if i % 10 == 0:
@@ -156,7 +187,11 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"\nBitti. {len(results)} analiz '{args.out}' dosyasına yazıldı.")
+    msg = f"\nBitti. Toplam {len(results)} analiz '{args.out}' dosyasında."
+    if errors:
+        msg += (f" {errors} mesaj hata aldı, kaydedilmedi; scripti tekrar "
+                f"çalıştırınca otomatik denenecek.")
+    print(msg)
 
 
 if __name__ == "__main__":

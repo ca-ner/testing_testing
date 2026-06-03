@@ -1,5 +1,7 @@
 [
   {
+    "id": 1,
+    "message_id": "161803716",
     "username": "Ritalin06",
     "date": "27 Temmuz 2025 19:52:07",
     "page": 1,
@@ -9,6 +11,8 @@
     "mesaj": "(ÖRNEK VERİ) Ali Bey Resort Sorgun'da kaldık, gecelik 70 bin TL civarıydı. İçkiler kötüydü ama deniz ve plaj tertemizdi, genel olarak fiyatına göre iyiydi."
   },
   {
+    "id": 2,
+    "message_id": "161803719",
     "username": "-PoseidoN-",
     "date": "27 Temmuz 2025 21:34:41",
     "page": 1,
@@ -18,6 +22,8 @@
     "mesaj": "(ÖRNEK VERİ) Rixos Premium Belek'te hizmet kusursuzdu fakat haftalık kişi başı 4.500 EUR fiyat bence fahiş, geçen seneye göre uçmuş."
   },
   {
+    "id": 3,
+    "message_id": "161803723",
     "username": "tatilci_42",
     "date": "28 Temmuz 2025 09:12:03",
     "page": 1,
@@ -27,6 +33,8 @@
     "mesaj": "(ÖRNEK VERİ) Maxx Royal Kemer'in yemekleri efsaneydi, a la carte restoranları özellikle çok iyi. Fiyatı paylaşmıyorum ama memnun kaldık."
   },
   {
+    "id": 4,
+    "message_id": "161803730",
     "username": "gezgin_07",
     "date": "28 Temmuz 2025 15:40:18",
     "page": 1,

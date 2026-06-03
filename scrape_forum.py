@@ -108,6 +108,28 @@ def fetch_page(n: int, state: dict, max_retries: int = 4) -> str:
     raise RuntimeError(f"Sayfa {n} indirilemedi: {last_err}")
 
 
+def extract_message_id(art):
+    """Mesajın foruma özgü kalıcı (stable) kimliğini çıkarır.
+
+    Bu kimlik sayfa/sıra değişse bile sabit kaldığı için tekrar tekrar
+    çalıştırmalarda mükerrer kayıtları ayıklamak (dedup) için kullanılır.
+    """
+    # 1) Favori/Reputation API bağlantılarındaki messageID=<n>
+    for el in art.find_all(True):
+        for v in el.attrs.values():
+            s = v if isinstance(v, str) else " ".join(v or [])
+            m = re.search(r"messageID=(\d+)", s)
+            if m:
+                return m.group(1)
+    # 2) "Mesaj Linkini Kopyala" seçeneğindeki /yonlen/<n>
+    scope = art.select_one(".ki-mesajsecenekleri") or art
+    for el in scope.select("[data-clipboard-text]"):
+        m = re.search(r"/yonlen/(\d+)", el.get("data-clipboard-text", ""))
+        if m:
+            return m.group(1)
+    return None
+
+
 def clean_text(node) -> str:
     """Mesaj gövdesini düz metne çevirir, fazla boşlukları sadeleştirir."""
     # <br> ve blok elemanları satır sonuna çevir
@@ -121,10 +143,14 @@ def clean_text(node) -> str:
 
 
 def parse_messages(html: str, page: int) -> list:
-    """Bir sayfanın HTML'inden mesaj listesini çıkarır."""
+    """Bir sayfanın HTML'inden mesaj listesini çıkarır.
+
+    Henüz benzersiz sıra numarası (id) atanmaz; o numara main() içinde, var
+    olan kayıtların devamı olacak şekilde verilir.
+    """
     soup = BeautifulSoup(html, "lxml")
     results = []
-    for art in soup.select("article.kl-icerik-satir"):
+    for idx, art in enumerate(soup.select("article.kl-icerik-satir")):
         user_el = art.select_one(".ki-kullaniciadi")
         msg_el = art.select_one(".msg")
         if not user_el or not msg_el:
@@ -139,13 +165,29 @@ def parse_messages(html: str, page: int) -> list:
         if not message:
             continue
 
+        # Kalıcı kimlik bulunamazsa sayfa+sıra tabanlı bir anahtara düş.
+        message_id = extract_message_id(art) or f"p{page}-i{idx}"
+
         results.append({
+            "message_id": message_id,
             "page": page,
             "username": username,
             "date": date,
             "message": message,
         })
     return results
+
+
+def load_existing(path: str):
+    """Var olan çıktıyı yükler; (kayıt listesi, görülen id kümesi, son sıra no)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            records = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return [], set(), 0
+    seen = {r.get("message_id") for r in records if r.get("message_id") is not None}
+    max_id = max((r.get("id", 0) for r in records), default=0)
+    return records, seen, max_id
 
 
 def main():
@@ -164,24 +206,44 @@ def main():
     end = min(end, TOTAL_PAGES)
 
     state = {"session": build_session(use_cloudscraper=False), "cloudflare": False}
-    all_messages = []
+
+    # Var olan çıktıyı yükle: işlem yarım kaldıysa eski kayıtları koru ve
+    # daha önce kaydedilmiş mesajları (message_id ile) bir daha ekleme.
+    all_messages, seen_ids, next_id = load_existing(args.out)
+    if all_messages:
+        print(f"Mevcut '{args.out}' bulundu: {len(all_messages)} kayıt, "
+              f"son sıra no {next_id}. Kaldığı yerden devam ediliyor.")
+    next_id += 1
+
+    def save():
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(all_messages, f, ensure_ascii=False, indent=2)
 
     print(f"Taranıyor: sayfa {start} -> {end} ({BASE_URL})")
     for n in range(start, end + 1):
         try:
             html = fetch_page(n, state)
             msgs = parse_messages(html, n)
-            all_messages.extend(msgs)
-            print(f"  sayfa {n:>3}: {len(msgs)} mesaj (toplam {len(all_messages)})")
+            added = 0
+            for m in msgs:
+                if m["message_id"] in seen_ids:
+                    continue  # bu mesaj zaten kayıtlı, atla
+                m = {"id": next_id, **m}   # benzersiz sıra numarası en başa
+                next_id += 1
+                seen_ids.add(m["message_id"])
+                all_messages.append(m)
+                added += 1
+            print(f"  sayfa {n:>3}: {len(msgs)} mesaj, {added} yeni "
+                  f"(toplam {len(all_messages)})")
+            # her sayfadan sonra kaydet: yarıda kesilse bile veri kaybı olmaz
+            save()
         except Exception as e:  # noqa: BLE001
             print(f"  [HATA] sayfa {n} atlandı: {e}", file=sys.stderr)
         # kibar tarama: sayfalar arasında rastgele bekle
         if n < end:
             time.sleep(random.uniform(args.min_delay, args.max_delay))
 
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(all_messages, f, ensure_ascii=False, indent=2)
-
+    save()
     print(f"\nBitti. {len(all_messages)} mesaj '{args.out}' dosyasına yazıldı.")
 
 
