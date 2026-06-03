@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-2) desifre.json içindeki her mesajı, LM Studio üzerinde lokal çalışan Qwen
-   diline modeline gönderir ve şu bilgileri çıkarır:
+2) desifre.json içindeki her mesajı, lokal Ollama üzerinde çalışan Qwen
+   modeline (varsayılan: qwen2.5:14b) gönderir ve şu bilgileri çıkarır:
        1) bahsedilen otel(ler)
        2) (varsa) fiyat
        3) yorumun kısa özeti
    Sonuçları yorum.json dosyasına yazar.
 
 Ön koşul:
-    - LM Studio açık olmalı ve "Local Server" başlatılmış olmalı
-      (varsayılan adres: http://localhost:1234).
-    - Bir Qwen modeli (ör. qwen2.5-7b-instruct) yüklü olmalı.
-      LM Studio OpenAI uyumlu bir API sunar.
+    - Ollama kurulu ve çalışıyor olmalı (varsayılan adres: http://localhost:11434).
+    - Model indirilmiş olmalı:  ollama pull qwen2.5:14b
+    - Sunucuyu başlatmak için (gerekirse):  ollama serve
 
 Kullanım:
     python analyze_messages.py
     python analyze_messages.py --limit 5            # ilk 5 mesajla test
-    python analyze_messages.py --model qwen2.5-7b-instruct
-    python analyze_messages.py --base-url http://localhost:1234/v1
+    python analyze_messages.py --model qwen2.5:14b
+    python analyze_messages.py --base-url http://localhost:11434
 """
 
 import argparse
@@ -47,26 +46,27 @@ USER_TEMPLATE = "Forum mesajı:\n\"\"\"\n{message}\n\"\"\""
 
 
 def call_llm(base_url: str, model: str, message: str,
-             temperature: float = 0.1, timeout: int = 120) -> dict:
-    """LM Studio (OpenAI uyumlu) chat/completions ucuna istek atar."""
-    url = base_url.rstrip("/") + "/chat/completions"
+             temperature: float = 0.1, timeout: int = 180) -> dict:
+    """Lokal Ollama'nın /api/chat ucuna istek atar (JSON modu açık)."""
+    url = base_url.rstrip("/") + "/api/chat"
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_TEMPLATE.format(message=message)},
         ],
-        "temperature": temperature,
-        "max_tokens": 400,
-        # LM Studio yeni sürümleri JSON modunu destekler; desteklemezse
-        # sunucu bunu yok sayar.
-        "response_format": {"type": "json_object"},
         "stream": False,
+        # Ollama'nın yapısal çıktı modu: yanıtı geçerli JSON'a zorlar.
+        "format": "json",
+        "options": {
+            "temperature": temperature,
+            "num_predict": 400,
+        },
     }
     resp = requests.post(url, json=payload, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()
-    content = data["choices"][0]["message"]["content"]
+    content = data["message"]["content"]
     return parse_json_block(content)
 
 
@@ -100,13 +100,13 @@ def norm(v):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="LM Studio Qwen ile mesaj analizi")
+    ap = argparse.ArgumentParser(description="Ollama Qwen ile mesaj analizi")
     ap.add_argument("--in", dest="infile", default="desifre.json")
     ap.add_argument("--out", default="yorum.json")
-    ap.add_argument("--base-url", default="http://localhost:1234/v1",
-                    help="LM Studio OpenAI uyumlu API adresi")
-    ap.add_argument("--model", default="qwen2.5-7b-instruct",
-                    help="LM Studio'da yüklü model adı/kimliği")
+    ap.add_argument("--base-url", default="http://localhost:11434",
+                    help="Ollama API adresi")
+    ap.add_argument("--model", default="qwen2.5:14b",
+                    help="Ollama'da yüklü model adı (ör. qwen2.5:14b)")
     ap.add_argument("--limit", type=int, default=None,
                     help="sadece ilk N mesajı işle (test için)")
     ap.add_argument("--temperature", type=float, default=0.1)
@@ -123,20 +123,51 @@ def main():
     if args.limit:
         messages = messages[: args.limit]
 
-    print(f"{len(messages)} mesaj analiz edilecek. Model: {args.model} "
-          f"@ {args.base_url}")
+    # Her mesaja kalıcı bir kimlik ver: scrape_forum.py 'id' atar; eski
+    # dosyalarda yoksa 'message_id' ya da içerikten türetilen bir anahtarı kullan.
+    def key_of(rec):
+        if rec.get("id") is not None:
+            return f"id:{rec['id']}"
+        if rec.get("message_id") is not None:
+            return f"mid:{rec['message_id']}"
+        return "h:" + str(hash(rec.get("message", "")))
 
+    # Yarım kalmış analizi sürdür: var olan yorum.json'daki işlenmiş kayıtları
+    # koru, aynı mesajı bir daha modele gönderme.
     results = []
-    for i, m in enumerate(messages, 1):
+    done = set()
+    try:
+        with open(args.out, encoding="utf-8") as f:
+            results = json.load(f)
+        done = {key_of(r) for r in results}
+        if done:
+            print(f"Mevcut '{args.out}' bulundu: {len(done)} kayıt zaten "
+                  f"analiz edilmiş, atlanacak.")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    todo = [m for m in messages if key_of(m) not in done]
+    print(f"{len(todo)} yeni mesaj analiz edilecek "
+          f"({len(messages) - len(todo)} atlandı). "
+          f"Model: {args.model} @ {args.base_url}")
+
+    errors = 0
+    for i, m in enumerate(todo, 1):
         text = m.get("message", "")
         try:
             analysis = call_llm(args.base_url, args.model, text,
                                 temperature=args.temperature)
         except Exception as e:  # noqa: BLE001
-            print(f"  [HATA] mesaj {i} analiz edilemedi: {e}", file=sys.stderr)
-            analysis = {"otel": None, "fiyat": None, "ozet": None}
+            # Başarısız analizi KAYDETME: 'done' sayılmasın ki sonraki
+            # çalıştırmada bu mesaj yeniden denensin.
+            errors += 1
+            print(f"  [HATA] id={m.get('id')} analiz edilemedi (tekrar "
+                  f"denenecek): {e}", file=sys.stderr)
+            continue
 
         results.append({
+            "id": m.get("id"),
+            "message_id": m.get("message_id"),
             "username": m.get("username"),
             "date": m.get("date"),
             "page": m.get("page"),
@@ -145,8 +176,8 @@ def main():
             "ozet": norm(analysis.get("ozet")),
             "mesaj": text,
         })
-        print(f"  [{i}/{len(messages)}] otel={results[-1]['otel']!r} "
-              f"fiyat={results[-1]['fiyat']!r}")
+        print(f"  [{i}/{len(todo)}] id={m.get('id')} "
+              f"otel={results[-1]['otel']!r} fiyat={results[-1]['fiyat']!r}")
 
         # her 10 mesajda bir ara kayıt (uzun çalışmalarda veri kaybını önler)
         if i % 10 == 0:
@@ -156,7 +187,11 @@ def main():
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"\nBitti. {len(results)} analiz '{args.out}' dosyasına yazıldı.")
+    msg = f"\nBitti. Toplam {len(results)} analiz '{args.out}' dosyasında."
+    if errors:
+        msg += (f" {errors} mesaj hata aldı, kaydedilmedi; scripti tekrar "
+                f"çalıştırınca otomatik denenecek.")
+    print(msg)
 
 
 if __name__ == "__main__":
